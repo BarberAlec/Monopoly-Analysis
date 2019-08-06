@@ -7,12 +7,16 @@ import pandas as pd
 
 class Tile:
     # INIT
-    def __init__(self):
-        self.type = "property"
+    def __init__(self, idx):
+        self.type = None
         self.numVisits = 0
+        self.id = idx
 
-    def make_property(self):
+    def make_property(self, Name, base_price):
         self.type = "property"
+        self.owner = None
+        self.property = Property(self.id, Name)
+        self.property.set_base_price(base_price)
 
     def make_chance(self):
         self.type = "chance"
@@ -23,8 +27,9 @@ class Tile:
     def make_go(self):
         self.type = "go"
 
-    def make_tax(self):
+    def make_tax(self, tax):
         self.type = "tax"
+        self.tax = tax
 
     def make_GOTOJAIL(self):
         self.type = "GOTOJAIL"
@@ -34,6 +39,7 @@ class Tile:
 
     def make_parking(self):
         self.type = "parking"
+        self.parking_prize = 0
 
     def visit(self):
         self.numVisits = self.numVisits + 1
@@ -48,20 +54,16 @@ class Tile:
 
 
 class GameBoard:
-    def __init__(self):
-        # Build Board
+    def __init__(self, num_players):
+        # Build Board and Players
         self.board = self.__createGameBoard__()
-        self.curr_idx = 0
+        self.num_players = num_players
+        self.players = [Player(i) for i in range(num_players)]
 
         # Meta
         self.turns_per_game = 100
         self.game_iterations = 200
         self.game_results = []
-
-        # Prison
-        self.imprisoned = False
-        self.turns_in_prison = 0
-        self.numberGetOutOfJailCards = 0
 
         # Decks
         self.comm_deck = np.arange(0, 16, 1)
@@ -72,12 +74,8 @@ class GameBoard:
     def __reset__(self):
         # Build Board
         self.board = self.__createGameBoard__()
-        self.curr_idx = 0
-
-        # Prison
-        self.imprisoned = False
-        self.turns_in_prison = 0
-        self.numberGetOutOfJailCards = 0
+        del self.players
+        self.players = [Player(i) for i in range(self.num_players)]
 
         # Decks
         self.comm_deck = np.arange(0, 16, 1)
@@ -86,12 +84,12 @@ class GameBoard:
         np.random.shuffle(self.chancedeck)
 
     def __createGameBoard__(self):
-        GameBoard = [Tile() for i in range(40)]
+        GameBoard = [Tile(i) for i in range(40)]
 
         # Set speacial tiles
         GameBoard[0].make_go()
         GameBoard[2].make_community()
-        GameBoard[4].make_tax()
+        GameBoard[4].make_tax(200)
         GameBoard[7].make_chance()
         GameBoard[10].make_JAIL()
         GameBoard[17].make_community()
@@ -100,14 +98,57 @@ class GameBoard:
         GameBoard[30].make_GOTOJAIL()
         GameBoard[33].make_community()
         GameBoard[36].make_chance()
-        GameBoard[38].make_tax()
+        GameBoard[38].make_tax(100)
+
+        # Utilities
+        GameBoard[12].make_property("Electric Company", 150)
+        GameBoard[28].make_property("Water Works", 150)
+
+        # Train Stations
+        GameBoard[5].make_property("Kings Cross", 200)
+        GameBoard[15].make_property("Marylebone Station", 200)
+        GameBoard[25].make_property("Fenchurch St. Station", 200)
+        GameBoard[35].make_property("Liverpool Street Station", 200)
+
+        # Brown Set
+        GameBoard[1].make_property("Old Kent Road", 60)
+        GameBoard[3].make_property("Whitechapel Road", 60)
+
+        # Light Blue Set
+        GameBoard[6].make_property("The Angel, Islington", 100)
+        GameBoard[8].make_property("Euston Road", 100)
+        GameBoard[9].make_property("Pentonville Road", 120)
+
+        # Pink Set
+        GameBoard[11].make_property("Pall Mall", 140)
+        GameBoard[13].make_property("White Hall", 140)
+        GameBoard[14].make_property("Northumblroad Avenue", 160)
+
+        # Orange Set
+        GameBoard[16].make_property("Bow Street", 180)
+        GameBoard[18].make_property("Marlborough Street", 180)
+        GameBoard[19].make_property("Vine Street", 200)
+
+        # Red Set
+        GameBoard[21].make_property("Strand", 220)
+        GameBoard[23].make_property("Fleet Street", 220)
+        GameBoard[24].make_property("Trafalgar Square", 240)
+
+        # Yellow Set
+        GameBoard[26].make_property("Leicester Square", 260)
+        GameBoard[27].make_property("Coventry Street", 260)
+        GameBoard[29].make_property("Piccadilly", 280)
+
+        # Green Set
+        GameBoard[31].make_property("Regent Street", 300)
+        GameBoard[32].make_property("Oxford Street", 300)
+        GameBoard[34].make_property("Bond Street", 320)
+
+        # Dark Blue Set
+        GameBoard[37].make_property("Park Lane", 350)
+        GameBoard[39].make_property("MayFair", 400)
 
         return GameBoard
-
-    def __GOTOJAIL__(self):
-        self.imprisoned = True
-        self.turns_in_prison = 0
-        self.curr_idx = 10
 
     def __pick_chance_return__(self):
         card_idx = self.chancedeck[0]
@@ -117,10 +158,10 @@ class GameBoard:
             else:
                 self.chancedeck[i] = self.chancedeck[i+1]
         return card_idx
-    
+
     def __pickup_chance_card__(self):
         card_idx = self.__pick_chance_return__()
-        
+
         # Take action based of card picked
         if card_idx == 0 or card_idx == 6:
             # Advance to next train station
@@ -211,7 +252,7 @@ class GameBoard:
             else:
                 self.comm_deck[i] = self.comm_deck[i+1]
         return card_idx
-    
+
     def __pickup_community_card__(self):
 
         # Pick a card and return to bottom of deck
@@ -332,7 +373,7 @@ class GameBoard:
         means = sum(self.game_results)/len(self.game_results)
 
         d = self.game_results.flatten()
-        tile_arr = np.tile(np.arange(0,40,1),self.game_iterations)
+        tile_arr = np.tile(np.arange(0, 40, 1), self.game_iterations)
 
         df = pd.DataFrame()
         df['Prob'] = d
@@ -342,16 +383,48 @@ class GameBoard:
         cmap = plt.get_cmap("magma")
         normalized_probs = 1-norm(means)
 
-        sns.barplot(x='Tile', y='Prob', data=df,palette=cmap(normalized_probs))
+        sns.barplot(x='Tile', y='Prob', data=df,
+                    palette=cmap(normalized_probs))
         plt.title("Monopoly: PMF Analysis of a Player Landing on a Tile")
         plt.ylabel("PMF")
         plt.xlabel("Tile Index")
         plt.show()
 
 
+class Player:
+    def __init__(self, idx):
+        self.id = idx
+        self.properties = []
+        self.curr_idx = 0
+
+        # Prison Variables
+        self.imprisoned = False
+        self.turns_in_prison = 0
+        self.numberGetOutOfJailCards = 0
+
+    def __GOTOJAIL__(self):
+        self.imprisoned = True
+        self.turns_in_prison = 0
+        self.curr_idx = 10
+
+
+class Property:
+    def __init__(self, tile_id, name):
+        self.id = tile_id
+        self.siblings = []
+        self.base_price = None
+        self.name = name
+
+    def make_set(self, prop):
+        self.siblings.append(prop)
+
+    def set_base_price(self, price):
+        self.base_price = price
+
+
 def main():
-    # Create Gameboard
-    game = GameBoard()
+    # Create Gameboard with four players
+    game = GameBoard(4)
     game.game_iterations = 500000
     game.turns_per_game = 100
 
